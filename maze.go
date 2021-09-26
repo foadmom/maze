@@ -157,6 +157,16 @@ func (_cell *cell) initCell (row, col int) {
 }
 
 
+const arrowRight = 0x27A1;
+// const arrowLeft  = 0x2B05;
+func markStartAndFinish (drawBuffer [][]rune) {
+	drawBuffer [1][0] = arrowRight;
+	var _bufferHeight int = len (drawBuffer);
+	var _bufferWidth  int = len (drawBuffer [_bufferHeight-2]);
+	drawBuffer [_bufferHeight-2][_bufferWidth-1] = arrowRight;
+}
+
+
 
 func (maze maze) setEntryAndExit  () {
 	maze.matrix[0][0].WestWall.status = Open;
@@ -199,6 +209,7 @@ func (_maze maze) printMaze () [][]rune {
 	}
 	var _bufferHeight int = len(_drawBuffer);
 	drawBottomBorder (_maze, _drawBuffer [_bufferHeight-1]); 
+	markStartAndFinish (_drawBuffer);
 	printBuffer (_drawBuffer);
 	return _drawBuffer;
 }

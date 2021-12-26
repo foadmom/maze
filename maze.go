@@ -1,3 +1,7 @@
+// some links used in this code:
+// https://stackoverflow.com/questions/38502/whats-a-good-algorithm-to-generate-a-maze
+//	http://weblog.jamisbuck.org/2010/12/27/maze-generation-recursive-backtracking
+//
 package main
 
 import (
@@ -13,11 +17,23 @@ const (
 	Border;
 	Closed;
 	Open;
+//	Enterance;
+//	Exit;
 	Visited;
+//	DeadEndPath;
+//	PathToExit;
 );
 
+const (
+	North = 0;
+	South = 1;
+	East  = 2;
+	West  = 3;
+);
+
+
 type wall struct {
-	status			int;
+	status			int;   // each wall has a status like Border or Open or Closed or ...
 };	
 
 type cell struct {
@@ -28,6 +44,8 @@ type cell struct {
 	NorthWall		*wall;
 	WestWall		*wall;
 	SouthWall		*wall;
+	PathToExit		bool;
+	PathToExitDir   int;
 };
 
 
@@ -42,26 +60,33 @@ type maze struct {
 
 func main () {
 	fmt.Println ("starting");
-	var _err error;
-	var _mazeSize int = 4;
-	var _cellWidth int = 4;
-	var _cellHeight int = 1;
+	usage ();
+	_start := time.Now ();
+
+	var _err        error;
+	var _mazeSize   int  = 4;
+	var _cellWidth  int  = 4;
+	var _cellHeight int  = 1;
+	var _solveMaze  bool = false;
 	if (len (os.Args) > 1) {
 		_mazeSize, _err = strconv.Atoi(os.Args[1]);
 		if (_err != nil) {
-			usage ();
+			os.Exit (-1);
 		}
 		if (len(os.Args) > 2) {
 			_cellWidth, _err = strconv.Atoi(os.Args[2]);
 			if (_err != nil) {
-				usage ();
+				os.Exit (-1);
 			}
 		}
 		if (len(os.Args) > 3) {
 			_cellHeight, _err = strconv.Atoi(os.Args[3]);
 			if (_err != nil) {
-				usage ();
+				os.Exit (-1);
 			}
+		}
+		if (len(os.Args) > 4) {
+			_solveMaze = (os.Args[4] == "solve");
 		}
 	}
 	_maze := createMaze (_mazeSize);
@@ -69,20 +94,14 @@ func main () {
 	_maze.cellHeight = _cellHeight;
 
 	_maze.recursiveBackTracking ();
-	test (_maze);
+	_elapsed := time.Since (_start);
 	_maze.printMaze ();
-
-	fmt.Println ("exiting");
+	if (_solveMaze) {
+		_maze.solve ();
+		_maze.printMaze ();
+	}
+	fmt.Printf (" ---- maze generated in %v\n", _elapsed);
 }
-
-func test (_maze maze) {
-	// _maze.matrix[1][1].SouthWall.status = Open;
-	// _maze.matrix[1][1].NorthWall.status = Open;
-	// for i:=0; i<_maze.cols-1; i++ {
-	// 	_maze.matrix[0][i].EastWall.status = Open;
-	// }
-}
-
 
 func createMaze (size int) maze {
 
@@ -279,6 +298,12 @@ func drawBottomBorder (maze maze, line []rune) {
 	}
 }
 
+
+var arrows []rune = []rune {0x2191, 0x2193,0x2192,0x2190};
+func getArrow (dir int) rune {
+	return arrows[dir];
+}
+//const bulletPoint = 0x2022;
 // this func draws the middle/vertical and the bottom border of a row of cells
 // the top border is drawn by the previous row of cells above.
 func drawACellRow (maze maze, _row int, drawBuffer [][]rune) {
@@ -306,7 +331,11 @@ func drawACellRow (maze maze, _row int, drawBuffer [][]rune) {
 				_line[((i+1)*maze.cellWidth)-2] = 'x';
 			}
 			if (maze.matrix[_row][i].EastWall.status == Closed) {
-					_line[((i+1)*maze.cellWidth)] = verticalLine;
+				_line[((i+1)*maze.cellWidth)] = verticalLine;
+			}
+			// if the status is PathToExit then mark it
+			if (maze.matrix[_row][i].PathToExit) {
+				_line[((i)*maze.cellWidth)+(maze.cellWidth/2)] = getArrow (maze.matrix[_row][i].PathToExitDir);   //bulletPoint;
 			}
 		}
 		_lineNum++;
@@ -333,11 +362,15 @@ func drawACellRow (maze maze, _row int, drawBuffer [][]rune) {
 
 
 func usage () {
+	fmt.Println ("this program will generate a maze of any size. it can also generate the solution path if requested.");
 	fmt.Println ("usage:");
-	fmt.Println ("    maze [matrix size. this will be the size of rows and columns] ");
-	fmt.Println ("         [cellS width for drawing purpose]");
-	fmt.Println ("         [cellS height for drawing purpose]");
-	fmt.Println ("    eg. maze 4 4");
+	fmt.Println ("full command:");
+	fmt.Println ("    maze no of rows and columns");
+	fmt.Println ("    width of each cell in chars for printing in the console");
+	fmt.Println ("    height of each cell in chars for printing in the console");
+	fmt.Println ("    solve the maze. it will print the path to exit");
+	fmt.Println ("    eg. maze 16 4 1");
+	fmt.Println ("    eg. maze 16 4 1 solve");
 }
 
 
@@ -446,6 +479,63 @@ func (_maze maze) recursiveBackTrackingProcess (row, col int) {
 
 // ==============================================================
 // ==============================================================
-// =============== recrusive backtracking =======================
+// =============== solve  =======================
 // ==============================================================
 // ==============================================================
+func (maze maze) solve () {
+	// starting cell is always 0,0 and opening is on the west wall
+	maze.matrix[0][0].PathToExitDir = West;
+	maze.findAPathFromThisCell (0,0, West);
+	maze.matrix[maze.rows-1][maze.cols-1].PathToExitDir = East;
+}
+
+func (maze maze) findAPathFromThisCell (row, col, from int) bool {
+	var _pathFound bool;
+	var _thisCell  *cell = &maze.matrix[row][col];
+	_thisCell.PathToExit = true;
+
+	if ( (row == maze.rows-1) && (col == maze.cols-1) ) {
+		// if this cell is the last cell, ie exit cell then we have
+		// found the way
+		return true;
+	}
+	if (from != North) {
+		if (_thisCell.NorthWall.status == Open) {
+			_pathFound = maze.findAPathFromThisCell(row-1, col, South);
+			if (_pathFound) {
+				_thisCell.PathToExitDir = North;
+				return _pathFound;
+			}
+		}
+	}
+	if (from != South) {
+		if (_thisCell.SouthWall.status == Open) {
+			_pathFound = maze.findAPathFromThisCell(row+1, col, North);
+			if (_pathFound) {
+				_thisCell.PathToExitDir = South;
+				return _pathFound;
+			}
+		}
+	}
+	if (from != East) {
+		if (_thisCell.EastWall.status == Open) {
+			_pathFound = maze.findAPathFromThisCell(row, col+1, West);
+			if (_pathFound) {
+				_thisCell.PathToExitDir = East;
+				return _pathFound;
+			}
+		}
+	}
+	if (from != West) {
+		if (_thisCell.WestWall.status == Open) {
+			_pathFound = maze.findAPathFromThisCell(row, col-1, East);
+			if (_pathFound) {
+				_thisCell.PathToExitDir = West;
+				return _pathFound;
+			}
+		}
+	}
+	_thisCell.PathToExit = false;
+	return false;
+	
+}

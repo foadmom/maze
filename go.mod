@@ -1,3 +1,3 @@
-module maze.go
+module github.com/foadmom/maze
 
 go 1.18
